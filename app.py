@@ -1,73 +1,68 @@
-import streamlit as st
+# Import necessary libraries
 import cv2
 import numpy as np
+import streamlit as st
 from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.image import img_to_array
+from tempfile import NamedTemporaryFile
 
 # Load the pre-trained model
-model = load_model('./hand_gesture_recognition_model.h5')  # Update with your model path
+model = load_model('./hand_gesture_recognition_model.h5')
 
-# Define the image size
-img_size = (64, 64)
-
-# Define the mapping of class indices to labels
-class_labels = {
-    0: 'Palm Up',
-    1: 'Fist',
-    2: 'Thumb Up',
-    3: 'Open Hand',
-    4: 'Palm Down',
-    5: 'Peace Sign',
-    6: 'Pointing Up',
-    7: 'Pointing Down',
-    8: 'Thumb Down',
-    9: 'OK Sign',
-    # Add more mappings as needed
+# Define the mapping of class indices to gesture names
+gesture_names = {
+    0: 'Index Pointing Up',
+    1: 'Palm Down',
+    2: 'Fist',
+    3: 'Thumbs Down',
+    4: 'Thumbs Up',
+    5: 'Palm Up',
+    6: 'Victory',
+    7: 'Stop',
+    8: 'OK',
+    9: 'Call Me'
 }
 
-def preprocess_image(image):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
-    image = cv2.resize(image, img_size)  # Resize the image
-    image = img_to_array(image)  # Convert image to numpy array
-    image = np.expand_dims(image, axis=0)  # Add batch dimension
-    image = image / 255.0  # Normalize the image
-    return image
+# Function to preprocess a frame
+def preprocess_frame(frame):
+    frame = cv2.resize(frame, (64, 64))  # Resize frame to match model input
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+    frame = frame / 255.0  # Normalize pixel values
+    frame = np.expand_dims(frame, axis=-1)  # Add channel dimension (64, 64, 1)
+    frame = np.expand_dims(frame, axis=0)  # Add batch dimension (1, 64, 64, 1)
+    return frame
 
-# Streamlit app
-st.title('Video-Based Hand Gesture Recognition')
+# Streamlit UI to upload a video file
+st.title("Hand Gesture Recognition from Uploaded Video")
+uploaded_file = st.file_uploader("Upload a video file", type=["mp4", "mov", "avi"])
 
-# Use webcam or video file
-video_source = st.selectbox("Choose video source", ("Webcam", "Upload Video"))
+if uploaded_file is not None:
+    # Save the uploaded video to a temporary file
+    with NamedTemporaryFile(delete=False) as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        video_path = tmp_file.name
 
-if video_source == "Upload Video":
-    uploaded_file = st.file_uploader("Choose a video...", type=["mp4", "avi", "mov"])
-    if uploaded_file is not None:
-        video = uploaded_file.name
-else:
-    video = 0  # 0 means webcam
-
-if st.button('Start Detection'):
-    stframe = st.empty()
-    cap = cv2.VideoCapture(video)
+    # Initialize video capture for the uploaded file
+    cap = cv2.VideoCapture(video_path)
+    stframe = st.empty()  # Create a placeholder for video frames
 
     while cap.isOpened():
-        ret, frame = cap.read()
+        ret, frame = cap.read()  # Capture frame-by-frame
         if not ret:
             break
-
-        # Preprocess the frame
-        processed_frame = preprocess_image(frame)
-
-        # Make prediction
-        predictions = model.predict(processed_frame)
-        predicted_class_index = np.argmax(predictions, axis=1)[0]
-        predicted_label = class_labels.get(predicted_class_index, "Unknown Gesture")
-
-        # Display the result on the frame
-        cv2.putText(frame, f"Gesture: {predicted_label}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
-        # Display the frame
+        
+        processed_frame = preprocess_frame(frame)  # Preprocess the frame
+        
+        # Make prediction using the model
+        prediction = model.predict(processed_frame)
+        predicted_class = np.argmax(prediction, axis=1)[0]
+        gesture = gesture_names[predicted_class]  # Map class index to gesture name
+        
+        # Display the gesture on the video
+        cv2.putText(frame, f'Gesture: {gesture}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
+        
+        # Display the frame using Streamlit
         stframe.image(frame, channels="BGR")
-
-    cap.release()
+    
+    cap.release()  # Release video capture
+else:
+    st.write("Please upload a video file.")
